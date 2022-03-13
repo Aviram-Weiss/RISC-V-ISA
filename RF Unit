@@ -1,0 +1,38 @@
+\viz_js
+            box: {width: 120, height: 18, strokeWidth: 0},
+            render() {
+               siggen = (name) => this.svSigRef(`${name}`) == null ? this.svSigRef(`sticky_zero`) : this.svSigRef(`${name}`);
+               
+               let rf_rd_en1 = siggen(`L0_rf1_rd_en1_a0`)
+               let rf_rd_index1 = siggen(`L0_rf1_rd_index1_a0`)
+               let rf_rd_en2 = siggen(`L0_rf1_rd_en2_a0`)
+               let rf_rd_index2 = siggen(`L0_rf1_rd_index2_a0`)
+               let rf_wr_index = siggen(`rf1_wr_index_a0`)
+               let wr = siggen(`L1_Xreg[${this.getIndex()}].L1_wr_a0`)
+               let value = siggen(`Xreg_value_a0(${this.getIndex()})`)
+               
+               let rd = (rf_rd_en1.asBool(false) && rf_rd_index1.asInt() == this.getIndex()) || 
+                        (rf_rd_en2.asBool(false) && rf_rd_index2.asInt() == this.getIndex())
+               
+               let mod = wr.asBool(false);
+               let reg = parseInt(this.getIndex())
+               let regIdent = reg.toString().padEnd(2, " ")
+               let newValStr = (regIdent + ": ").padEnd(14, " ")
+               let reg_str = new fabric.Text((regIdent + ": " + value.asInt(NaN).toString(M4_VIZ_BASE)).padEnd(14, " "), {
+                  top: 0,
+                  left: 0,
+                  fontSize: 14,
+                  fill: mod ? "blue" : "black",
+                  fontWeight: mod ? 800 : 400,
+                  fontFamily: "monospace",
+                  textBackgroundColor: rd ? "#b0ffff" : mod ? "#f0f0f0" : "white"
+               })
+               if (mod) {
+                  setTimeout(() => {
+                     reg_str.set({text: newValStr, textBackgroundColor: "#d0e8ff", dirty: true})
+                     this.global.canvas.renderAll()
+                  }, 1500)
+               }
+               return [reg_str]
+            },
+            where: {left: 316, top: -40}

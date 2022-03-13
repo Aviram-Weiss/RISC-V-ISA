@@ -1,38 +1,220 @@
-\viz_js
-            box: {width: 120, height: 18, strokeWidth: 0},
-            render() {
-               siggen = (name) => this.svSigRef(`${name}`) == null ? this.svSigRef(`sticky_zero`) : this.svSigRef(`${name}`);
-               
-               let rf_rd_en1 = siggen(`L0_rf1_rd_en1_a0`)
-               let rf_rd_index1 = siggen(`L0_rf1_rd_index1_a0`)
-               let rf_rd_en2 = siggen(`L0_rf1_rd_en2_a0`)
-               let rf_rd_index2 = siggen(`L0_rf1_rd_index2_a0`)
-               let rf_wr_index = siggen(`rf1_wr_index_a0`)
-               let wr = siggen(`L1_Xreg[${this.getIndex()}].L1_wr_a0`)
-               let value = siggen(`Xreg_value_a0(${this.getIndex()})`)
-               
-               let rd = (rf_rd_en1.asBool(false) && rf_rd_index1.asInt() == this.getIndex()) || 
-                        (rf_rd_en2.asBool(false) && rf_rd_index2.asInt() == this.getIndex())
-               
-               let mod = wr.asBool(false);
-               let reg = parseInt(this.getIndex())
-               let regIdent = reg.toString().padEnd(2, " ")
-               let newValStr = (regIdent + ": ").padEnd(14, " ")
-               let reg_str = new fabric.Text((regIdent + ": " + value.asInt(NaN).toString(M4_VIZ_BASE)).padEnd(14, " "), {
-                  top: 0,
-                  left: 0,
-                  fontSize: 14,
-                  fill: mod ? "blue" : "black",
-                  fontWeight: mod ? 800 : 400,
-                  fontFamily: "monospace",
-                  textBackgroundColor: rd ? "#b0ffff" : mod ? "#f0f0f0" : "white"
+ // String representations of the instructions for debug.
+      \SV_plus
+         // A default signal for ones that are not found.
+         logic sticky_zero;
+         assign sticky_zero = 0;
+         // Instruction strings from the assembler.
+         logic [40*8-1:0] instr_strs [0:8];
+         assign instr_strs = '{ "(I) ADDI x14,x0,0                       ",  "(I) ADDI x12,x0,1010                    ",  "(I) ADDI x13,x0,1                       ",  "(R) ADD x14,x13,x14                     ",  "(I) ADDI x13,x13,1                      ",  "(B) BLT x13,x12,1111111111000           ",  "(I) ADDI x30,x14,111111010100           ",  "(B) BGE x0,x0,0                         ",  "END                                     "};
+      
+      \viz_js
+         
+         box: {strokeWidth: 0},
+         init() {
+            let imem_box = new fabric.Rect({
+                  top: 0 - 50,
+                  left: -700,
+                  fill: "#208028",
+                  width: 665,
+                  height: 76 + 18 * 8,
+                  stroke: "black",
+                  visible: false
                })
-               if (mod) {
-                  setTimeout(() => {
-                     reg_str.set({text: newValStr, textBackgroundColor: "#d0e8ff", dirty: true})
-                     this.global.canvas.renderAll()
-                  }, 1500)
+            let decode_box = new fabric.Rect({
+                  top: -25,
+                  left: -15,
+                  fill: "#f8f0e8",
+                  width: 280,
+                  height: 215,
+                  stroke: "#ff8060",
+                  visible: false
+               })
+            let rf_box = new fabric.Rect({
+                  top: -90,
+                  left: 306,
+                  fill: "#2028b0",
+                  width: 145,
+                  height: 650,
+                  stroke: "black",
+                  visible: false
+               })
+            let dmem_box = new fabric.Rect({
+                  top: -90,
+                  left: 470,
+                  fill: "#208028",
+                  width: 145,
+                  height: 650,
+                  stroke: "black",
+                  visible: false
+               })
+            let imem_header = new fabric.Text("🗃️ IMem", {
+                  top: 0 - 35,
+                  left: -460,
+                  fontSize: 18,
+                  fontWeight: 800,
+                  fontFamily: "monospace",
+                  fill: "white",
+                  visible: false
+               })
+            let decode_header = new fabric.Text("⚙️ Instr. Decode", {
+                  top: -4,
+                  left: 20,
+                  fill: "maroon",
+                  fontSize: 18,
+                  fontWeight: 800,
+                  fontFamily: "monospace",
+                  visible: false
+               })
+            let rf_header = new fabric.Text("📂 RF", {
+                  top: -75,
+                  left: 316,
+                  fontSize: 18,
+                  fontWeight: 800,
+                  fontFamily: "monospace",
+                  fill: "white",
+                  visible: false
+               })
+            let dmem_header = new fabric.Text("🗃️ DMem", {
+                  top: -75,
+                  left: 480,
+                  fontSize: 18,
+                  fontWeight: 800,
+                  fontFamily: "monospace",
+                  fill: "white",
+                  visible: false
+               })
+            
+            let passed = new fabric.Text("", {
+                  top: 340,
+                  left: -30,
+                  fontSize: 46,
+                  fontWeight: 800
+               })
+            this.missing_col1 = new fabric.Text("", {
+                  top: 420,
+                  left: -480,
+                  fontSize: 16,
+                  fontWeight: 500,
+                  fontFamily: "monospace",
+                  fill: "purple"
+               })
+            this.missing_col2 = new fabric.Text("", {
+                  top: 420,
+                  left: -300,
+                  fontSize: 16,
+                  fontWeight: 500,
+                  fontFamily: "monospace",
+                  fill: "purple"
+               })
+            let missing_sigs = new fabric.Group(
+               [new fabric.Text("🚨 To Be Implemented:", {
+                  top: 350,
+                  left: -466,
+                  fontSize: 18,
+                  fontWeight: 800,
+                  fill: "red",
+                  fontFamily: "monospace"
+               }),
+               new fabric.Rect({
+                  top: 400,
+                  left: -500,
+                  fill: "#ffffe0",
+                  width: 400,
+                  height: 300,
+                  stroke: "black"
+               }),
+               this.missing_col1,
+               this.missing_col2,
+              ],
+              {visible: false}
+            )
+            return {imem_box, decode_box, rf_box, dmem_box, imem_header, decode_header, rf_header, dmem_header, passed, missing_sigs}
+         },
+         render() {
+            // Strings (2 columns) of missing signals.
+            var missing_list = ["", ""]
+            var missing_cnt = 0
+            let sticky_zero = this.svSigRef(`sticky_zero`);  // A default zero-valued signal.
+            // Attempt to look up a signal, using sticky_zero as default and updating missing_list if expected.
+            siggen = (name, full_name, expected = true) => {
+               var sig = this.svSigRef(full_name ? full_name : `L0_${name}_a0`)
+               if (sig == null) {
+                  sig         = sticky_zero;
+                  if (expected) {
+                     missing_list[missing_cnt > 11 ? 1 : 0] += `◾ $${name}      \n`;
+                     missing_cnt++
+                  }
                }
-               return [reg_str]
-            },
-            where: {left: 316, top: -40}
+               return sig
+            }
+            // Look up signal, and it's ok if it doesn't exist.
+            siggen_rf_dmem = (name, scope) => {
+               return siggen(name, scope, false)
+            }
+            
+            // Determine which is_xxx signal is asserted.
+            siggen_mnemonic = () => {
+               let instrs = ["lui", "auipc", "jal", "jalr", "beq", "bne", "blt", "bge", "bltu", "bgeu", "lb", "lh", "lw", "lbu", "lhu", "sb", "sh", "sw", "addi", "slti", "sltiu", "xori", "ori", "andi", "slli", "srli", "srai", "add", "sub", "sll", "slt", "sltu", "xor", "srl", "sra", "or", "and", "csrrw", "csrrs", "csrrc", "csrrwi", "csrrsi", "csrrci", "load", "s_instr"];
+               for(i=0;i<instrs.length;i++) {
+                  var sig = this.svSigRef(`L0_is_${instrs[i]}_a0`)
+                  if(sig != null && sig.asBool()) {
+                     return instrs[i].toUpperCase()
+                  }
+               }
+               return "ILLEGAL"
+            }
+            
+            let pc            =   siggen("pc")
+            let instr         =   siggen("instr")
+            let types = {I: siggen("is_i_instr"),
+                         R: siggen("is_r_instr"),
+                         S: siggen("is_s_instr"),
+                         B: siggen("is_b_instr"),
+                         J: siggen("is_j_instr"),
+                         U: siggen("is_u_instr"),
+                        }
+            let rd_valid      =   siggen("rd_valid")
+            let rd            =   siggen("rd")
+            let result        =   siggen("result")
+            let src1_value    =   siggen("src1_value")
+            let src2_value    =   siggen("src2_value")
+            let imm           =   siggen("imm")
+            let imm_valid     =   siggen("imm_valid")
+            let rs1           =   siggen("rs1")
+            let rs2           =   siggen("rs2")
+            let rs1_valid     =   siggen("rs1_valid")
+            let rs2_valid     =   siggen("rs2_valid")
+            let ld_data       =   siggen("ld_data")
+            let mnemonic      =   siggen_mnemonic()
+            let passed        =   siggen("passed_cond", false, false)
+            
+            let rf_rd_en1     =   siggen_rf_dmem("rf1_rd_en1")
+            let rf_rd_index1  =   siggen_rf_dmem("rf1_rd_index1")
+            let rf_rd_en2     =   siggen_rf_dmem("rf1_rd_en2")
+            let rf_rd_index2  =   siggen_rf_dmem("rf1_rd_index2")
+            let rf_wr_en      =   siggen_rf_dmem("rf1_wr_en")
+            let rf_wr_index   =   siggen_rf_dmem("rf1_wr_index")
+            let rf_wr_data    =   siggen_rf_dmem("rf1_wr_data")
+            let dmem_rd_en    =   siggen_rf_dmem("dmem1_rd_en")
+            let dmem_wr_en    =   siggen_rf_dmem("dmem1_wr_en")
+            let dmem_addr     =   siggen_rf_dmem("dmem1_addr")
+            
+            if (instr != sticky_zero) {
+               this.getObjects().imem_box.set({visible: true})
+               this.getObjects().imem_header.set({visible: true})
+               this.getObjects().decode_box.set({visible: true})
+               this.getObjects().decode_header.set({visible: true})
+            }
+            let pcPointer = new fabric.Text("👉", {
+               top: 0 + 18 * (pc.asInt() / 4),
+               left: -375,
+               fill: "blue",
+               fontSize: 14,
+               fontFamily: "monospace",
+               visible: pc != sticky_zero
+            })
+            let pc_arrow = new fabric.Line([-57, 0 + 18 * (pc.asInt() / 4) + 6, 6, 35], {
+               stroke: "#b0c8df",
+               strokeWidth: 2,
+               visible: instr != sticky_zero
+            })
